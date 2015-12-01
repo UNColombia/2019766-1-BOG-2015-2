@@ -40,11 +40,11 @@
 #define MIN 0
 #define MAX 1
 #define GENETIC_OPERATORS 4
-#define RANDOM_POINTS 2
-#define MOMENTUM_POINTS 1
+#define RANDOM_POINTS 6
+#define MOMENTUM_POINTS 3
 #define PERCENTAGE_SPACE 0.05
 #define MAX_UPDATES 1
-#define MOMENTUM_SCALE 2.0
+//#define MOMENTUM_SCALE 2.0
 
 using namespace std;
 
@@ -53,7 +53,8 @@ typedef boost::mt19937 base_generator_type;
 Benchmarks *f[16];// = new Benchmarks[16];
 double bounds[16][2];
 
-// all necessary functions
+// for 1/5 rule
+double MOMENTUM_SCALE = 2.0;
 
 void init() {
     f[1] = new F1();
@@ -91,7 +92,7 @@ public:
      */
     void updateMomentumVector(double *point) {
         for(int i = 0; i < DIM; ++i) {
-            currentSum[i] = point[i] - x[i];
+            currentSum[i] += point[i] - x[i];
         }
 
         ++updates;
@@ -441,20 +442,20 @@ void ratesNormalize(Individual* ind) {
 }
 
 int operatorSelect(double *rates, boost::variate_generator<base_generator_type&, boost::uniform_real<> > random) {
-    double values[GENETIC_OPERATORS + 2];
+    double values[GENETIC_OPERATORS + 1];
     double sum = 0.0;
     values[0] = 0.0;
-    values[GENETIC_OPERATORS + 1] = 1.0;
-    for (int i = 0; i < GENETIC_OPERATORS; ++i) {
-        values[i + 1] = sum;
-        sum += rates[i];
+    values[GENETIC_OPERATORS] = 1.0;
+    for (int i = 1; i < GENETIC_OPERATORS; ++i) {
+        sum += rates[i - 1];
+        values[i] = sum;
     }
 
     double num = random();
 
-    for (int j = 0; j < GENETIC_OPERATORS + 1; ++j) {
-        if(values[j] < num && num < values[j + 1]) {
-            return j - 1;
+    for (int j = 0; j < GENETIC_OPERATORS; ++j) {
+        if(values[j] <= num && num < values[j + 1]) {
+            return j;
         }
     }
 }
@@ -521,7 +522,10 @@ vector<double> HAEA(Operator *operators[GENETIC_OPERATORS], int lambda, int curr
     Benchmarks* function = f[currFunction];
 
     Individual *population = initPopulation(lambda, randomSpace, uniformDelta);
+
     int i = 0;
+    // for 1/5 rule over mutations
+    int totalMutations = 0, successfulMutations = 0;
     while(i < iterations) {
         for (int j = 0; j < lambda; ++j) {
             // extracting rates
@@ -552,22 +556,10 @@ vector<double> HAEA(Operator *operators[GENETIC_OPERATORS], int lambda, int curr
 
             vector< array<double, DIM> > res = op->apply(selected, eng, (double *) (bounds + currFunction * 2));
 
-            //cout << "res size: " << res.size() << endl;
-
             double *offspring = new double[res.size() * DIM];
             for (int k = 0; k < res.size(); ++k) {
                 copy(begin(res[k]), end(res[k]), offspring + k*DIM);
             }
-
-            /*if(j == 0) {
-                for(int k = 0; k < res.size(); ++k) {
-                    for(int a = 0; a < DIM; a++) {
-                        cout << offspring[k*DIM + a] << " ";
-                    }
-                    cout << endl;
-                }
-                cout << endl;
-            }*/
 
             double *child;
             double childFitness;
@@ -588,6 +580,8 @@ vector<double> HAEA(Operator *operators[GENETIC_OPERATORS], int lambda, int curr
             } else {
                 childFitness = numeric_limits<double>::max();
 
+                int bestChild = 0;
+
                 for(int currentChild = 0; currentChild < res.size(); ++currentChild) {
 
                     // fixing operation
@@ -600,26 +594,31 @@ vector<double> HAEA(Operator *operators[GENETIC_OPERATORS], int lambda, int curr
                     }
 
                     double fitness = function->compute(offspring + currentChild * DIM);
-                    /*if(j == 0) {
-                        cout << "child " << currentChild << " fitness: " << fitness << endl;
-                    }*/
+
                     if(fitness < childFitness) {
                         childFitness = fitness;
                         child = offspring + currentChild * DIM;
+                        bestChild = currentChild;
                     }
+                }
+
+                totalMutations++;
+                if(bestChild > res.size() - MOMENTUM_POINTS - 1) {
+                    successfulMutations += 1;
+                }
+
+                if(totalMutations == 200) {
+                    //cout << successfulMutations << " " << totalMutations << endl;
+                    MOMENTUM_SCALE += (successfulMutations * 1.0) / totalMutations > 0.2 ? 0.005 : -0.005;
+
+                    successfulMutations = 0;
+                    totalMutations = 0;
+                    //cout << "momentum scale: " << MOMENTUM_SCALE << endl;
                 }
 
                 //
                 i += res.size();
             }
-
-            /*if(j == 0) {
-                cout << "operator: " << operatorIndex << endl;
-                for(int z = 0 ; z < DIM; ++z) {
-                    cout << population[j].x[z] << " ";
-                }
-                cout << endl;
-            }*/
 
             if(childFitness <= parentFitness) {
                 if(childFitness < parentFitness) {
@@ -627,20 +626,9 @@ vector<double> HAEA(Operator *operators[GENETIC_OPERATORS], int lambda, int curr
                 }
                 population[j].updateMomentumVector(child);
                 memcpy(&(population[j].x), child, DIM * sizeof(double));
-                /*if(j == 0) {
-                    cout << "good" << endl;
-                }*/
             } else {
                 population[j].rates[operatorIndex] *= (1.0 - delta);
-                /*if(j == 0) {
-                    cout << "bad" << endl;
-                }*/
             }
-
-            /*if(j == 0) {
-                cout << "parent fitness: " << parentFitness << endl;
-                cout << "child fitness: " << childFitness << endl;
-            }*/
 
             delete offspring;
 
@@ -652,14 +640,14 @@ vector<double> HAEA(Operator *operators[GENETIC_OPERATORS], int lambda, int curr
 
         //cout << i << endl;
 
-        if(i >= (int)(1.2e5) && measure[0]) {
+        if(i >= (int)(30000) && measure[0]) {
             toReturn[0] = bestIndividual(population, function, lambda);
             /*if(id == 1)
                 cout << toReturn[0] << endl;*/
             measure[0] = false;
 
             //savePopulation(population, lambda, DIM, saveFile);
-        } else if(i >= (int)(6e5) && measure[1]) {
+        } else if(i >= (int)(70000) && measure[1]) {
             toReturn[1] = bestIndividual(population, function, lambda);
             /*if(id == 1)
                 cout << toReturn[1] << endl;*/
@@ -689,7 +677,7 @@ void saveFile(string s, double arr[][3]) {
     }
 }
 
-#define EVAL 6
+#define EVAL 25
 
 int main() {
     init();
@@ -699,7 +687,7 @@ int main() {
     pipe(descriptor);
     pid_t pid;
 
-    for (int k = 1; k <= 1; ++k) {
+    for (int k = 1; k <= 15; ++k) {
         double best[EVAL][3];
 
         for (int i = 0; i < EVAL; ++i) {
@@ -720,9 +708,7 @@ int main() {
                 operators[2] = new LinearRandomXOver(eng);
                 operators[3] = new RandomXOver(eng);
 
-                vector<double> result = HAEA(operators, 30, k, eng, (int) 2e6, i);
-
-                cout << result[0] << "," << result[1] << "," << result[2] << endl;
+                vector<double> result = HAEA(operators, 100, k, eng, (int) 2e6, i);
 
                 res[0] = result[0];
                 res[1] = result[1];
