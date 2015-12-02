@@ -640,19 +640,19 @@ vector<double> HAEA(Operator *operators[GENETIC_OPERATORS], int lambda, int curr
 
         //cout << i << endl;
 
-        if(i >= (int)(30000) && measure[0]) {
+        if(i >= (int)(120000) && measure[0]) {
             toReturn[0] = bestIndividual(population, function, lambda);
             /*if(id == 1)
                 cout << toReturn[0] << endl;*/
             measure[0] = false;
 
-            //savePopulation(population, lambda, DIM, saveFile);
-        } else if(i >= (int)(70000) && measure[1]) {
+            savePopulation(population, lambda, DIM, saveFile);
+        } else if(i >= (int)(600000) && measure[1]) {
             toReturn[1] = bestIndividual(population, function, lambda);
             /*if(id == 1)
                 cout << toReturn[1] << endl;*/
             measure[1] = false;
-            //savePopulation(population, lambda, DIM, saveFile);
+            savePopulation(population, lambda, DIM, saveFile);
         }
     }
 
@@ -708,7 +708,7 @@ int main() {
                 operators[2] = new LinearRandomXOver(eng);
                 operators[3] = new RandomXOver(eng);
 
-                vector<double> result = HAEA(operators, 100, k, eng, (int) 2e6, i);
+                vector<double> result = HAEA(operators, 100, k, eng, (int) 3e6, i);
 
                 res[0] = result[0];
                 res[1] = result[1];
