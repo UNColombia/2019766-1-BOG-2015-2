@@ -688,6 +688,7 @@ int main() {
     pid_t pid;
 
     for (int k = 1; k <= 15; ++k) {
+		cout << "start" << endl;
         double best[EVAL][3];
 
         for (int i = 0; i < EVAL; ++i) {
