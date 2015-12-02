@@ -654,6 +654,8 @@ vector<double> HAEA(Operator *operators[GENETIC_OPERATORS], int lambda, int curr
             measure[1] = false;
             savePopulation(population, lambda, DIM, saveFile);
         }
+		if(id == 1 || id == 10 || id == 20)
+            cout << "id: " << id << ", " << i << endl;
     }
 
     toReturn[2] = bestIndividual(population, function, lambda);
